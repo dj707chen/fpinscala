@@ -143,9 +143,9 @@ object RNG:
   def map2ViaFlatMap[A, B, C](ra: Rand[A], rb: Rand[B])(f: (A, B) => C): Rand[C] =
     flatMap(ra)(a => map(rb)(b => f(a, b)))
 
-opaque type State[S, +A] = S => (A, S)
-
 object State:
+  opaque type State[S, +A] = S => (A, S)
+
   extension [S, A](underlying: State[S, A])
     def run(s: S): (A, S) = underlying(s)
 
@@ -187,22 +187,26 @@ object State:
 enum Input:
   case Coin, Turn
 
-case class Machine(locked: Boolean, candies: Int, coins: Int)
+case class Stats(candies: Int, coins: Int)        {
+  override def toString = s"Stats(candies: $candies, coins: $coins)"
+}
+case class Machine(locked: Boolean, stats: Stats) {
+  override def toString = s"Machine(locked: $locked, stats: $stats)"
+}
 
 object Candy:
-  def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = 
+  import State.State
+  def simulateMachine(inputs: List[Input]): State[Machine, Stats] =
     for
       _ <- State.traverse(inputs)(i => State.modify(update(i)))
       s <- State.get
-    yield (s.coins, s.candies)
+    yield s.stats
 
-  val update = (i: Input) => (s: Machine) =>
-    (i, s) match
-      case (_, Machine(_, 0, _)) => s
-      case (Input.Coin, Machine(false, _, _)) => s
-      case (Input.Turn, Machine(true, _, _)) => s
-      case (Input.Coin, Machine(true, candy, coin)) =>
-        Machine(false, candy, coin + 1)
-      case (Input.Turn, Machine(false, candy, coin)) =>
-        Machine(true, candy - 1, coin)
-
+  def update(i: Input): Machine => Machine =
+    (s: Machine) =>
+      (i, s) match
+        case (_, Machine(_, Stats(0, _)))                     => s
+        case (Input.Coin, Machine(false, Stats(_, _)))        => s
+        case (Input.Turn, Machine(true, Stats(_, _)))         => s
+        case (Input.Coin, Machine(true, Stats(candy, coin)))  => Machine(false, Stats(candy, coin + 1))
+        case (Input.Turn, Machine(false, Stats(candy, coin))) => Machine(true, Stats(candy - 1, coin))
